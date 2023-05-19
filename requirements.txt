@@ -1,0 +1,7 @@
+# requirements.txt
+langchain
+argparse
+tk
+openai
+pinecone-client
+selenium
