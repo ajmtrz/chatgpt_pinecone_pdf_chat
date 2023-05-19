@@ -136,11 +136,15 @@ def main() -> None:
 
     # Initialize GUI
     root = tk.Tk()
+    text_label = tk.Label(root, text='Your Question:')
+    text_label.grid(row=0, column=0)
     text_area = ScrolledText(root, width=40, height=10)
     text_area.grid(row=0, column=0, sticky="nsew")
+    response_label = tk.Label(root, text='AI Response:')
+    response_label.grid(row=2, column=0)
     response_area = ScrolledText(root, width=40, height=10)
     response_area.grid(row=1, column=0, sticky="nsew")
-    button = tk.Button(root, text='Enviar', command=lambda: send_query(qa, text_area, response_area))
+    button = tk.Button(root, text='Submit', command=lambda: send_query(qa, text_area, response_area))
     button.grid(row=2, column=0)
     root.grid_columnconfigure(0, weight=1)
     root.grid_rowconfigure(0, weight=1)
