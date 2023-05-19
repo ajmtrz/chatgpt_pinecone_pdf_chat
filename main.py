@@ -84,6 +84,7 @@ def get_qa(llm: ChatOpenAI, vectorstore: Pinecone, chain_type: str) -> Retrieval
 
 
 def fetch_answer(query: str, qa: RetrievalQAWithSourcesChain, response_area: ScrolledText) -> None:
+    response_area.insert(tk.END, "Waiting...")
     with get_openai_callback() as cb:
         result = qa({"question": query})
     response_area.insert(tk.END, f'{result["answer"]}\n\nSpent a total of {cb.total_tokens} tokens')
@@ -136,21 +137,27 @@ def main() -> None:
 
     # Initialize GUI
     root = tk.Tk()
+    root.geometry("800x600")
+
     text_label = tk.Label(root, text='Your Question:')
-    text_label.grid(row=0, column=0)
+    text_label.grid(row=0, column=0, sticky='W')
+
     text_area = ScrolledText(root, width=40, height=10)
-    text_area.grid(row=0, column=0, sticky="nsew")
-    response_label = tk.Label(root, text='AI Response:')
-    response_label.grid(row=2, column=0)
-    response_area = ScrolledText(root, width=40, height=10)
-    response_area.grid(row=1, column=0, sticky="nsew")
+    text_area.grid(row=1, column=0, sticky="nsew")
+
     button = tk.Button(root, text='Submit', command=lambda: send_query(qa, text_area, response_area))
     button.grid(row=2, column=0)
+
+    response_label = tk.Label(root, text='AI Response:')
+    response_label.grid(row=3, column=0, sticky='W')
+
+    response_area = ScrolledText(root, width=40, height=10)
+    response_area.grid(row=4, column=0, sticky="nsew")
+
     root.grid_columnconfigure(0, weight=1)
-    root.grid_rowconfigure(0, weight=1)
     root.grid_rowconfigure(1, weight=1)
+    root.grid_rowconfigure(4, weight=1)
     root.mainloop()
-
-
+# Run
 if __name__ == "__main__":
     main()
