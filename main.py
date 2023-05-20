@@ -72,7 +72,18 @@ def get_vectorstore(pinecone_api_key: str, pinecone_env: str, documents: List[Do
     if index_name in pinecone.list_indexes():
         pinecone.delete_index(index_name)
     pinecone.create_index(index_name, dimension=dimension, metric=metric, pod_type=pod_type)
-    return Pinecone.from_documents(documents, embeddings, index_name=index_name)
+    # Wait until the index is ready
+    while True:
+        try:
+            index_info = pinecone.describe_index(name=index_name)
+            if len(index_info) > 0:
+                if index_info[7]['state'] == 'Ready':
+                    pinecone_object = Pinecone.from_documents(documents, embeddings, index_name=index_name)
+                    break
+        except Exception as e:
+            print(f'Waiting for index to be ready, current status: {e}')
+        time.sleep(5)
+    return pinecone_object
 
 
 def get_qa(llm: ChatOpenAI, vectorstore: Pinecone, chain_type: str) -> RetrievalQAWithSourcesChain:
