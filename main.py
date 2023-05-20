@@ -1,5 +1,6 @@
 import os
 import re
+import time
 import threading
 import argparse
 import tkinter as tk
