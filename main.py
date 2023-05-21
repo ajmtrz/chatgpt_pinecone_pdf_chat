@@ -1,6 +1,7 @@
 import os
 import re
 import time
+import queue
 import threading
 import argparse
 import tkinter as tk
@@ -16,6 +17,9 @@ from langchain.document_loaders import PyPDFDirectoryLoader, SeleniumURLLoader
 from langchain.schema import Document
 from langchain.vectorstores import Pinecone
 import pinecone
+
+# Queue
+log_queue = queue.Queue()
 
 
 def is_valid_url(url: str) -> bool:
@@ -96,9 +100,10 @@ def get_qa(llm: ChatOpenAI, vectorstore: Pinecone, chain_type: str) -> Retrieval
 
 
 def fetch_answer(query: str, qa: RetrievalQAWithSourcesChain, response_area: ScrolledText) -> None:
-    response_area.insert(tk.END, "Waiting...")
+    log_queue.put("Waiting for response...")
     with get_openai_callback() as cb:
         result = qa({"question": query})
+    log_queue.put("Ready to query")
     response_area.insert(tk.END, f'{result["answer"]}\n\nSpent a total of {cb.total_tokens} tokens')
 
 
@@ -109,12 +114,12 @@ def send_query(qa: RetrievalQAWithSourcesChain, text_area: ScrolledText, respons
     threading.Thread(target=fetch_answer, args=(query, qa, response_area)).start()
 
 
-def main() -> None:
+def parse_args() -> argparse.Namespace:
     # Parse arguments
     parser = argparse.ArgumentParser(
         description="This program extracts and processes information from specified PDFs and \
-                    URLs using OpenAI's NLP models. The resulting embeddings are vectorized with \
-                    Pinecone, creating an efficient queryable index for user interaction."
+                        URLs using OpenAI's NLP models. The resulting embeddings are vectorized with \
+                        Pinecone, creating an efficient queryable index for user interaction."
     )
     parser.add_argument("--pdf_folder", type=str, help="Folder containing PDF documents")
     parser.add_argument("--urls_file", type=str, help="Text file containing the URLs to examine")
@@ -123,33 +128,41 @@ def main() -> None:
     parser.add_argument("--openai_temp", type=float, help="Sets temperature in OpenAI (Default: 0.3)")
     parser.add_argument("--pinecone_api_key", type=str, help="Pinecone API Key (Example: my-pinecone-api-key)")
     parser.add_argument("--pinecone_env", type=str, help="Pinecone environment (region) (Example: us-west-2)")
-    parser.add_argument("--chain_type", type=str, help="Methods to pass multiple documents (stuff, map_reduce, refine, map-rerank)")
-    args = parser.parse_args()
+    parser.add_argument("--chain_type", type=str,
+                        help="Methods to pass multiple documents (stuff, map_reduce, refine, map-rerank)")
+    return parser.parse_args()
 
-    # Set Envs
-    os.environ["OPENAI_API_KEY"] = args.openai_api_key
-    os.environ["PYTHONHTTPSVERIFY"] = "0"
 
+def join_data(pdf_folder: str, urls_file: str) -> List[Document]:
     # Read and clean documents
     pdfs, urls = [], []
-    if args.pdf_folder:
-        pdfs = read_documents(args.pdf_folder)
-    if args.urls_file:
-        urls = read_urls(args.urls_file)
+    if pdf_folder:
+        pdfs = read_documents(pdf_folder)
+    if urls_file:
+        urls = read_urls(urls_file)
     documents = pdfs + urls
     if not documents:
         print(f'Any document provided')
         exit(0)
-    clean_documents(documents)
 
-    # Initialize OpenAI, Pinecone, and QA
-    llm, embeddings = get_llm_and_embeddings(args.openai_model, args.openai_temp)
-    vectorstore = get_vectorstore(args.pinecone_api_key, args.pinecone_env, documents, embeddings)
-    qa = get_qa(llm, vectorstore, args.chain_type)
+    clean_documents(documents)
+    return documents
+
+
+def gui(qa: RetrievalQAWithSourcesChain) -> None:
+    def update_status_bar():
+        try:
+            message = log_queue.get_nowait()
+        except queue.Empty:
+            pass
+        else:
+            status_text.set(message)
+        root.after(1000, update_status_bar)
 
     # Initialize GUI
     root = tk.Tk()
     root.geometry("800x600")
+    root.title("ChatGPTDoMyHomework")
 
     text_label = tk.Label(root, text='Your Question:')
     text_label.grid(row=0, column=0, sticky='W')
@@ -166,10 +179,40 @@ def main() -> None:
     response_area = ScrolledText(root, width=40, height=10)
     response_area.grid(row=4, column=0, sticky="nsew")
 
+    status_text = tk.StringVar()
+    status_bar = tk.Label(root, textvariable=status_text, bd=1, relief=tk.SUNKEN, anchor=tk.W)
+    status_bar.grid(row=5, column=0, sticky='we')
+
     root.grid_columnconfigure(0, weight=1)
     root.grid_rowconfigure(1, weight=1)
     root.grid_rowconfigure(4, weight=1)
+    root.after(1000, update_status_bar)
     root.mainloop()
+
+
+def main() -> None:
+    # log
+    print("Initializing, please wait...")
+
+    # Parse arguments
+    args = parse_args()
+
+    # Set Envs
+    os.environ["OPENAI_API_KEY"] = args.openai_api_key
+    os.environ["PYTHONHTTPSVERIFY"] = "0"
+
+    # Get documents
+    data = join_data(args.pdf_folder, args.urls_file)
+
+    # Initialize OpenAI, Pinecone, and QA
+    llm, embeddings = get_llm_and_embeddings(args.openai_model, args.openai_temp)
+    vectorstore = get_vectorstore(args.pinecone_api_key, args.pinecone_env, data, embeddings)
+    qa = get_qa(llm, vectorstore, args.chain_type)
+
+    # Initialize GUI
+    gui(qa)
+
+
 # Run
 if __name__ == "__main__":
     main()
