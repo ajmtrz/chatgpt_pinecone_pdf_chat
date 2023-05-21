@@ -164,7 +164,7 @@ def gui(qa: RetrievalQAWithSourcesChain) -> None:
     root.geometry("800x600")
     root.title("ChatGPTDoMyHomework")
 
-    text_label = tk.Label(root, text='Your Question:')
+    text_label = tk.Label(root, text="Your question about the context:")
     text_label.grid(row=0, column=0, sticky='W')
 
     text_area = ScrolledText(root, width=40, height=10)
@@ -173,7 +173,7 @@ def gui(qa: RetrievalQAWithSourcesChain) -> None:
     button = tk.Button(root, text='Submit', command=lambda: send_query(qa, text_area, response_area))
     button.grid(row=2, column=0)
 
-    response_label = tk.Label(root, text='AI Response:')
+    response_label = tk.Label(root, text="AI response about the context:")
     response_label.grid(row=3, column=0, sticky='W')
 
     response_area = ScrolledText(root, width=40, height=10)
@@ -210,6 +210,7 @@ def main() -> None:
     qa = get_qa(llm, vectorstore, args.chain_type)
 
     # Initialize GUI
+    log_queue.put("Ready to query")
     gui(qa)
 
 
