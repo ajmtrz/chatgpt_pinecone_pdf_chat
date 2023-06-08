@@ -36,7 +36,7 @@ def sanitize_url(url: str) -> str:
     return urljoin(url, reconstructed_url)
 
 
-def read_documents(path: str) -> List[Document]:
+def read_pdfs(path: str) -> List[Document]:
     loader = PyPDFDirectoryLoader(path)
     return loader.load()
 
@@ -68,22 +68,23 @@ def get_llm_and_embeddings(model_type: str, model_temp: float) -> Tuple[ChatOpen
     return llm, embeddings
 
 
-def get_vectorstore(pinecone_api_key: str, pinecone_env: str, documents: List[Document], embeddings: OpenAIEmbeddings) -> Pinecone:
+def get_vectorstore(
+        pinecone_api_key: str,
+        pinecone_env: str,
+        pinecone_index_name: str,
+        documents: List[Document],
+        embeddings: OpenAIEmbeddings
+) -> Pinecone:
     pinecone.init(api_key=pinecone_api_key, environment=pinecone_env)
-    index_name = "langchain"
-    dimension = 1536
-    metric = "cosine"
-    pod_type = "p1"
-    if index_name in pinecone.list_indexes():
-        pinecone.delete_index(index_name)
-    pinecone.create_index(index_name, dimension=dimension, metric=metric, pod_type=pod_type)
+    if pinecone_index_name not in pinecone.list_indexes():
+        pinecone.create_index(pinecone_index_name, dimension=1536, metric="cosine", pod_type="p1")
     # Wait until the index is ready
     while True:
         try:
-            index_info = pinecone.describe_index(name=index_name)
+            index_info = pinecone.describe_index(name=pinecone_index_name)
             if len(index_info) > 0:
                 if index_info[7]['state'] == 'Ready':
-                    pinecone_object = Pinecone.from_documents(documents, embeddings, index_name=index_name)
+                    pinecone_object = Pinecone.from_documents(documents, embeddings, index_name=pinecone_index_name)
                     break
         except Exception as e:
             print(f'Waiting for index to be ready, current status: {e}')
@@ -93,6 +94,7 @@ def get_vectorstore(pinecone_api_key: str, pinecone_env: str, documents: List[Do
 
 def get_qa(llm: ChatOpenAI, vectorstore: Pinecone, chain_type: str) -> RetrievalQAWithSourcesChain:
     return RetrievalQAWithSourcesChain.from_chain_type(
+        reduce_k_below_max_tokens=True,
         retriever=vectorstore.as_retriever(),
         chain_type=chain_type,
         llm=llm,
@@ -128,6 +130,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--openai_temp", type=float, help="Sets temperature in OpenAI (Default: 0.3)")
     parser.add_argument("--pinecone_api_key", type=str, help="Pinecone API Key (Example: my-pinecone-api-key)")
     parser.add_argument("--pinecone_env", type=str, help="Pinecone environment (region) (Example: us-west-2)")
+    parser.add_argument("--pinecone_index_name", type=str, help="Pinecone Index name")
     parser.add_argument("--chain_type", type=str,
                         help="Methods to pass multiple documents (stuff, map_reduce, refine, map-rerank)")
     return parser.parse_args()
@@ -137,14 +140,13 @@ def join_data(pdf_folder: str, urls_file: str) -> List[Document]:
     # Read and clean documents
     pdfs, urls = [], []
     if pdf_folder:
-        pdfs = read_documents(pdf_folder)
+        pdfs = read_pdfs(pdf_folder)
     if urls_file:
         urls = read_urls(urls_file)
     documents = pdfs + urls
     if not documents:
         print(f'Any document provided')
         exit(0)
-
     clean_documents(documents)
     return documents
 
@@ -206,7 +208,7 @@ def main() -> None:
 
     # Initialize OpenAI, Pinecone, and QA
     llm, embeddings = get_llm_and_embeddings(args.openai_model, args.openai_temp)
-    vectorstore = get_vectorstore(args.pinecone_api_key, args.pinecone_env, data, embeddings)
+    vectorstore = get_vectorstore(args.pinecone_api_key, args.pinecone_env, args.pinecone_index_name, data, embeddings)
     qa = get_qa(llm, vectorstore, args.chain_type)
 
     # Initialize GUI
