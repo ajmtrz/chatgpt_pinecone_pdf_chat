@@ -12,6 +12,7 @@ from urllib.parse import urlparse, urljoin
 from langchain.chat_models import ChatOpenAI
 from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.callbacks import get_openai_callback
+from langchain.chains.qa_with_sources import load_qa_with_sources_chain
 from langchain.chains import RetrievalQAWithSourcesChain
 from langchain.document_loaders import PyPDFDirectoryLoader, SeleniumURLLoader
 from langchain.schema import Document
@@ -93,18 +94,19 @@ def get_vectorstore(
 
 
 def get_qa(llm: ChatOpenAI, vectorstore: Pinecone, chain_type: str) -> RetrievalQAWithSourcesChain:
+    qa_chain = load_qa_with_sources_chain(llm, chain_type=chain_type)
     return RetrievalQAWithSourcesChain.from_chain_type(
-        reduce_k_below_max_tokens=True,
+        combine_documents_chain=qa_chain,
         retriever=vectorstore.as_retriever(),
-        chain_type=chain_type,
-        llm=llm,
+        #max_tokens_limit = 1000,
+        #reduce_k_below_max_tokens=True,
     )
 
 
 def fetch_answer(query: str, qa: RetrievalQAWithSourcesChain, response_area: ScrolledText) -> None:
     log_queue.put("Waiting for response...")
     with get_openai_callback() as cb:
-        result = qa({"question": query})
+        result = qa({"question": query}, return_only_outputs=True)
     log_queue.put("Ready to query")
     response_area.insert(tk.END, f'{result["answer"]}\n\nSpent a total of {cb.total_tokens} tokens')
 
