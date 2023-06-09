@@ -6,14 +6,19 @@ import threading
 import argparse
 import tkinter as tk
 from tkinter.scrolledtext import ScrolledText
-from typing import List, Tuple
+from typing import List
 from urllib.parse import urlparse, urljoin
 
+from langchain.chains.conversational_retrieval.base import BaseConversationalRetrievalChain
 from langchain.chat_models import ChatOpenAI
 from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.callbacks import get_openai_callback
+from langchain.memory import ConversationSummaryBufferMemory
+from langchain.chains import LLMChain
 from langchain.chains.qa_with_sources import load_qa_with_sources_chain
-from langchain.chains import RetrievalQAWithSourcesChain
+from langchain.chains import ConversationalRetrievalChain
+from langchain.chains.conversational_retrieval.prompts import CONDENSE_QUESTION_PROMPT
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.document_loaders import PyPDFDirectoryLoader, SeleniumURLLoader
 from langchain.schema import Document
 from langchain.vectorstores import Pinecone
@@ -63,10 +68,21 @@ def clean_documents(documents: List[Document]) -> None:
         document.page_content = re.sub(r" {2,}", " ", document.page_content)
 
 
-def get_llm_and_embeddings(model_type: str, model_temp: float) -> Tuple[ChatOpenAI, OpenAIEmbeddings]:
-    llm = ChatOpenAI(model_name=model_type, temperature=model_temp)
-    embeddings = OpenAIEmbeddings()
-    return llm, embeddings
+def join_data(pdf_folder: str, urls_file: str) -> List[Document]:
+    # Read and clean documents
+    pdfs, urls = [], []
+    if pdf_folder:
+        pdfs = read_pdfs(pdf_folder)
+    if urls_file:
+        urls = read_urls(urls_file)
+    docs = pdfs + urls
+    if not docs:
+        print(f'Any document provided')
+        exit(0)
+    clean_documents(docs)
+    docs_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(chunk_size=100, chunk_overlap=0)
+    documents = docs_splitter.split_documents(docs)
+    return documents
 
 
 def get_vectorstore(
@@ -74,9 +90,9 @@ def get_vectorstore(
         pinecone_env: str,
         pinecone_index_name: str,
         pdf_folder: str,
-        urls_file: str,
-        embeddings: OpenAIEmbeddings
+        urls_file: str
 ) -> Pinecone:
+    embeddings = OpenAIEmbeddings()
     pinecone.init(api_key=pinecone_api_key, environment=pinecone_env)
     pinecone_indexes = pinecone.list_indexes()
     if pinecone_index_name not in pinecone_indexes:
@@ -102,25 +118,27 @@ def get_vectorstore(
     return pinecone_object
 
 
-def get_qa(llm: ChatOpenAI, vectorstore: Pinecone) -> RetrievalQAWithSourcesChain:
-    qa_chain = load_qa_with_sources_chain(llm, chain_type="refine")
-    return RetrievalQAWithSourcesChain(
-        combine_documents_chain=qa_chain,
-        retriever=vectorstore.as_retriever(),
-        # max_tokens_limit = 1000,
-        # reduce_k_below_max_tokens=True,
-    )
+def get_qa(temp: str, model: str, vectorstore: Pinecone) -> BaseConversationalRetrievalChain:
+    llm = ChatOpenAI(temperature=temp, model=model)
+    question_generator = LLMChain(llm=llm, prompt=CONDENSE_QUESTION_PROMPT)
+    retriever = vectorstore.as_retriever()
+    doc_chain = load_qa_with_sources_chain(llm, chain_type="refine")
+    memory = ConversationSummaryBufferMemory(llm=llm, max_token_limit=100, memory_key="chat_history",
+                                             return_messages=True)
+    return ConversationalRetrievalChain(combine_docs_chain=doc_chain, retriever=retriever,
+                                        question_generator=question_generator, memory=memory)
 
 
-def fetch_answer(query: str, qa: RetrievalQAWithSourcesChain, response_area: ScrolledText) -> None:
+def fetch_answer(query: str, qa: BaseConversationalRetrievalChain, response_area: ScrolledText) -> None:
     log_queue.put("Waiting for response...")
     with get_openai_callback() as cb:
-        result = qa({"question": query}, return_only_outputs=True)
+        result = qa({"question": query})
+
     log_queue.put("Ready to query")
     response_area.insert(tk.END, f'{result["answer"]}\n\nSpent a total of {cb.total_tokens} tokens')
 
 
-def send_query(qa: RetrievalQAWithSourcesChain, text_area: ScrolledText, response_area: ScrolledText) -> None:
+def send_query(qa: BaseConversationalRetrievalChain, text_area: ScrolledText, response_area: ScrolledText) -> None:
     query = text_area.get('1.0', 'end-1c')
     text_area.delete('1.0', tk.END)
     response_area.delete('1.0', tk.END)
@@ -145,22 +163,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def join_data(pdf_folder: str, urls_file: str) -> List[Document]:
-    # Read and clean documents
-    pdfs, urls = [], []
-    if pdf_folder:
-        pdfs = read_pdfs(pdf_folder)
-    if urls_file:
-        urls = read_urls(urls_file)
-    documents = pdfs + urls
-    if not documents:
-        print(f'Any document provided')
-        exit(0)
-    clean_documents(documents)
-    return documents
-
-
-def gui(qa: RetrievalQAWithSourcesChain) -> None:
+def gui(qa: BaseConversationalRetrievalChain) -> None:
     def update_status_bar():
         try:
             message = log_queue.get_nowait()
@@ -213,10 +216,12 @@ def main() -> None:
     os.environ["PYTHONHTTPSVERIFY"] = "0"
 
     # Initialize OpenAI, Pinecone, and QA
-    llm, embeddings = get_llm_and_embeddings(args.openai_model, args.openai_temp)
     vectorstore = get_vectorstore(args.pinecone_api_key, args.pinecone_env, args.pinecone_index_name, args.pdf_folder,
-                                  args.urls_file, embeddings)
-    qa = get_qa(llm, vectorstore)
+                                  args.urls_file)
+    qa = get_qa(args.openai_temp, args.openai_model, vectorstore)
+
+    # log
+    print("Ready")
 
     # Initialize GUI
     log_queue.put("Ready to query")
