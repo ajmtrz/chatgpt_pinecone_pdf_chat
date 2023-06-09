@@ -119,11 +119,12 @@ def get_vectorstore(
 
 
 def get_qa(temp: str, model: str, vectorstore: Pinecone) -> BaseConversationalRetrievalChain:
-    llm = ChatOpenAI(temperature=temp, model=model)
-    question_generator = LLMChain(llm=llm, prompt=CONDENSE_QUESTION_PROMPT)
     retriever = vectorstore.as_retriever()
-    doc_chain = load_qa_with_sources_chain(llm, chain_type="refine")
-    memory = ConversationSummaryBufferMemory(llm=llm, max_token_limit=100, memory_key="chat_history",
+    llm_4 = ChatOpenAI(temperature=temp, model=model)
+    llm_3 = ChatOpenAI(temperature=0, model='gpt-3.5-turbo')
+    question_generator = LLMChain(llm=llm_4, prompt=CONDENSE_QUESTION_PROMPT)
+    doc_chain = load_qa_with_sources_chain(llm_4, chain_type="refine")
+    memory = ConversationSummaryBufferMemory(llm=llm_3, max_token_limit=100, memory_key="chat_history",
                                              return_messages=True)
     return ConversationalRetrievalChain(combine_docs_chain=doc_chain, retriever=retriever,
                                         question_generator=question_generator, memory=memory)
