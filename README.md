@@ -20,7 +20,7 @@ Our Python script accepts a variety of arguments to get your homework done the w
 * `--openai_temp`: Sets the temperature for the OpenAI model. Keep it cool, my friends.
 * `--pinecone_api_key`: Your personal Pinecone API Key. Guard this as you would your Netflix password.
 * `--pinecone_env`: The Pinecone environment (region) to use. Choose your own adventure!
-* `--chain_type`: How to process multiple documents (`stuff`, `map_reduce`, `refine`, `map-rerank`). Variety is the spice of life!
+* `--pinecone_index_name`: Name of your Pinecone Index. Choose something memorable, like your first pet's name!
 
 Once your arguments are set, the script gets to work, reading and cleaning documents from the specified sources, initializing OpenAI and Pinecone, and setting up a GUI for you to send queries to your new homework helper. Homework has never been so... entertaining!
 
