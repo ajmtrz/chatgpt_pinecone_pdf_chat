@@ -14,9 +14,8 @@ from langchain.chat_models import ChatOpenAI
 from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.callbacks import get_openai_callback
 from langchain.memory import ConversationSummaryBufferMemory
-from langchain.chains import LLMChain
-from langchain.chains.qa_with_sources import load_qa_with_sources_chain
 from langchain.chains import ConversationalRetrievalChain
+from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 from langchain.chains.conversational_retrieval.prompts import CONDENSE_QUESTION_PROMPT
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.document_loaders import PyPDFDirectoryLoader, SeleniumURLLoader
@@ -120,21 +119,21 @@ def get_vectorstore(
 
 def get_qa(temp: str, model: str, vectorstore: Pinecone) -> BaseConversationalRetrievalChain:
     retriever = vectorstore.as_retriever()
-    llm_4 = ChatOpenAI(temperature=temp, model=model)
+    streaming_llm_4 = ChatOpenAI(temperature=temp, model=model, streaming=True,
+                                 callbacks=[StreamingStdOutCallbackHandler()])
     llm_3 = ChatOpenAI(temperature=0, model='gpt-3.5-turbo')
-    question_generator = LLMChain(llm=llm_4, prompt=CONDENSE_QUESTION_PROMPT)
-    doc_chain = load_qa_with_sources_chain(llm_4, chain_type="refine")
     memory = ConversationSummaryBufferMemory(llm=llm_3, max_token_limit=100, memory_key="chat_history",
-                                             return_messages=True)
-    return ConversationalRetrievalChain(combine_docs_chain=doc_chain, retriever=retriever,
-                                        question_generator=question_generator, memory=memory)
+                                             return_messages=True, input_key='question', output_key='answer')
+    return ConversationalRetrievalChain.from_llm(llm=streaming_llm_4, chain_type="refine", retriever=retriever,
+                                                 condense_question_llm=llm_3, memory=memory,
+                                                 condense_question_prompt=CONDENSE_QUESTION_PROMPT,
+                                                 return_source_documents=True)
 
 
 def fetch_answer(query: str, qa: BaseConversationalRetrievalChain, response_area: ScrolledText) -> None:
     log_queue.put("Waiting for response...")
     with get_openai_callback() as cb:
         result = qa({"question": query})
-
     log_queue.put("Ready to query")
     response_area.insert(tk.END, f'{result["answer"]}\n\nSpent a total of {cb.total_tokens} tokens')
 
