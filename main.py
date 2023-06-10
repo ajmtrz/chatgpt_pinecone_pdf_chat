@@ -15,6 +15,7 @@ from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.memory import ConversationSummaryBufferMemory
 from langchain.chains import ConversationalRetrievalChain
 from langchain.callbacks.base import BaseCallbackHandler
+from langchain.callbacks import get_openai_callback
 from langchain.chains.conversational_retrieval.prompts import CONDENSE_QUESTION_PROMPT
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.document_loaders import PyPDFDirectoryLoader, SeleniumURLLoader
@@ -138,9 +139,17 @@ def get_qa(temp: str, model: str, vectorstore: Pinecone, text_area: tk.Text) -> 
 
 def fetch_answer(query: str, qa: BaseConversationalRetrievalChain, text_area: ScrolledText) -> None:
     text_area.delete('1.0', tk.END)
-    log_queue.put("Waiting for response...")
-    qa({"question": query})
-    log_queue.put("Ready to query")
+    log_queue.put("Answering ...")
+    with get_openai_callback() as cb:
+        result = qa({"question": query}, return_only_outputs=True)
+    sources = set()
+    for source in result['source_documents']:
+        sources.add(source.metadata['source'])
+    text_area.insert(tk.END, '\n\nSources:\n')
+    for source in sources:
+        text_area.insert(tk.END, f'{source}\n')
+    text_area.insert(tk.END, f'\n\n{cb}')
+    log_queue.put("Ready")
 
 
 def send_query(qa: BaseConversationalRetrievalChain, text_area: ScrolledText) -> None:
@@ -167,7 +176,10 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def gui(openai_temp: str, openai_model:  str, vectorstore: Pinecone) -> None:
+def gui(pinecone_api_key: str, pinecone_env: str, pinecone_index_name: str, pdf_folder: str, urls_file: str,
+        openai_temp: str, openai_model:  str) -> None:
+    # Initialize OpenAI, Pinecone, and QA
+    vectorstore = get_vectorstore(pinecone_api_key, pinecone_env, pinecone_index_name, pdf_folder, urls_file)
     def update_status_bar():
         try:
             message = log_queue.get_nowait()
@@ -202,9 +214,6 @@ def gui(openai_temp: str, openai_model:  str, vectorstore: Pinecone) -> None:
 
 
 def main() -> None:
-    # log
-    print("Initializing, please wait...")
-
     # Parse arguments
     args = parse_args()
 
@@ -212,16 +221,10 @@ def main() -> None:
     os.environ["OPENAI_API_KEY"] = args.openai_api_key
     os.environ["PYTHONHTTPSVERIFY"] = "0"
 
-    # Initialize OpenAI, Pinecone, and QA
-    vectorstore = get_vectorstore(args.pinecone_api_key, args.pinecone_env, args.pinecone_index_name, args.pdf_folder,
-                                  args.urls_file)
-
-    # log
-    print("Ready")
-
     # Initialize GUI
     log_queue.put("Ready to query")
-    gui(args.openai_temp, args.openai_model, vectorstore)
+    gui(args.pinecone_api_key, args.pinecone_env, args.pinecone_index_name, args.pdf_folder,
+                                  args.urls_file, args.openai_temp, args.openai_model)
 
 
 # Run
