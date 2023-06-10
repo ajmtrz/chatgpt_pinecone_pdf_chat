@@ -12,10 +12,9 @@ from urllib.parse import urlparse, urljoin
 from langchain.chains.conversational_retrieval.base import BaseConversationalRetrievalChain
 from langchain.chat_models import ChatOpenAI
 from langchain.embeddings.openai import OpenAIEmbeddings
-from langchain.callbacks import get_openai_callback
 from langchain.memory import ConversationSummaryBufferMemory
 from langchain.chains import ConversationalRetrievalChain
-from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
+from langchain.callbacks.base import BaseCallbackHandler
 from langchain.chains.conversational_retrieval.prompts import CONDENSE_QUESTION_PROMPT
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.document_loaders import PyPDFDirectoryLoader, SeleniumURLLoader
@@ -26,6 +25,13 @@ import pinecone
 # Queue
 log_queue = queue.Queue()
 
+class MyCustomHandler(BaseCallbackHandler):
+    def __init__(self, text_area):
+        self.text_area = text_area
+
+    def on_llm_new_token(self, token: str, **kwargs) -> None:
+        self.text_area.insert(tk.END, token)
+        self.text_area.update_idletasks()
 
 def is_valid_url(url: str) -> bool:
     try:
@@ -117,10 +123,10 @@ def get_vectorstore(
     return pinecone_object
 
 
-def get_qa(temp: str, model: str, vectorstore: Pinecone) -> BaseConversationalRetrievalChain:
+def get_qa(temp: str, model: str, vectorstore: Pinecone, text_area: tk.Text) -> BaseConversationalRetrievalChain:
     retriever = vectorstore.as_retriever()
     streaming_llm_4 = ChatOpenAI(temperature=temp, model=model, streaming=True,
-                                 callbacks=[StreamingStdOutCallbackHandler()])
+                                 callbacks=[MyCustomHandler(text_area)])
     llm_3 = ChatOpenAI(temperature=0, model='gpt-3.5-turbo')
     memory = ConversationSummaryBufferMemory(llm=llm_3, max_token_limit=100, memory_key="chat_history",
                                              return_messages=True, input_key='question', output_key='answer')
@@ -130,19 +136,17 @@ def get_qa(temp: str, model: str, vectorstore: Pinecone) -> BaseConversationalRe
                                                  return_source_documents=True)
 
 
-def fetch_answer(query: str, qa: BaseConversationalRetrievalChain, response_area: ScrolledText) -> None:
+def fetch_answer(query: str, qa: BaseConversationalRetrievalChain, text_area: ScrolledText) -> None:
+    text_area.delete('1.0', tk.END)
     log_queue.put("Waiting for response...")
-    with get_openai_callback() as cb:
-        result = qa({"question": query})
+    qa({"question": query})
     log_queue.put("Ready to query")
-    response_area.insert(tk.END, f'{result["answer"]}\n\nSpent a total of {cb.total_tokens} tokens')
 
 
-def send_query(qa: BaseConversationalRetrievalChain, text_area: ScrolledText, response_area: ScrolledText) -> None:
+def send_query(qa: BaseConversationalRetrievalChain, text_area: ScrolledText) -> None:
     query = text_area.get('1.0', 'end-1c')
     text_area.delete('1.0', tk.END)
-    response_area.delete('1.0', tk.END)
-    threading.Thread(target=fetch_answer, args=(query, qa, response_area)).start()
+    threading.Thread(target=fetch_answer, args=(query, qa, text_area)).start()
 
 
 def parse_args() -> argparse.Namespace:
@@ -163,7 +167,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def gui(qa: BaseConversationalRetrievalChain) -> None:
+def gui(openai_temp: str, openai_model:  str, vectorstore: Pinecone) -> None:
     def update_status_bar():
         try:
             message = log_queue.get_nowait()
@@ -178,28 +182,21 @@ def gui(qa: BaseConversationalRetrievalChain) -> None:
     root.geometry("800x600")
     root.title("ChatGPTDoMyHomework")
 
-    text_label = tk.Label(root, text="Your question about the context:")
-    text_label.grid(row=0, column=0, sticky='W')
+    status_text = tk.StringVar()
+    status_bar = tk.Label(root, textvariable=status_text, bd=1, relief=tk.SUNKEN, anchor=tk.W)
+    status_bar.grid(row=0, column=0, sticky='we')
 
     text_area = ScrolledText(root, width=40, height=10)
     text_area.grid(row=1, column=0, sticky="nsew")
 
-    button = tk.Button(root, text='Submit', command=lambda: send_query(qa, text_area, response_area))
+    qa = get_qa(openai_temp, openai_model, vectorstore, text_area)
+
+    button = tk.Button(root, text='Submit', command=lambda: send_query(qa, text_area))
     button.grid(row=2, column=0)
-
-    response_label = tk.Label(root, text="AI response about the context:")
-    response_label.grid(row=3, column=0, sticky='W')
-
-    response_area = ScrolledText(root, width=40, height=10)
-    response_area.grid(row=4, column=0, sticky="nsew")
-
-    status_text = tk.StringVar()
-    status_bar = tk.Label(root, textvariable=status_text, bd=1, relief=tk.SUNKEN, anchor=tk.W)
-    status_bar.grid(row=5, column=0, sticky='we')
 
     root.grid_columnconfigure(0, weight=1)
     root.grid_rowconfigure(1, weight=1)
-    root.grid_rowconfigure(4, weight=1)
+
     root.after(1000, update_status_bar)
     root.mainloop()
 
@@ -218,14 +215,13 @@ def main() -> None:
     # Initialize OpenAI, Pinecone, and QA
     vectorstore = get_vectorstore(args.pinecone_api_key, args.pinecone_env, args.pinecone_index_name, args.pdf_folder,
                                   args.urls_file)
-    qa = get_qa(args.openai_temp, args.openai_model, vectorstore)
 
     # log
     print("Ready")
 
     # Initialize GUI
     log_queue.put("Ready to query")
-    gui(qa)
+    gui(args.openai_temp, args.openai_model, vectorstore)
 
 
 # Run
