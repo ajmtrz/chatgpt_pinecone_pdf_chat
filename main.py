@@ -15,9 +15,8 @@ from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.memory import ConversationSummaryBufferMemory
 from langchain.chains.llm import LLMChain
 from langchain.chains.qa_with_sources import load_qa_with_sources_chain
-from langchain.chains.conversational_retrieval.prompts import CONDENSE_QUESTION_PROMPT, QA_PROMPT
+from langchain.chains.conversational_retrieval.prompts import CONDENSE_QUESTION_PROMPT
 from langchain.chains import ConversationalRetrievalChain
-from langchain.callbacks.base import BaseCallbackHandler
 from langchain.callbacks import get_openai_callback
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.document_loaders import PyPDFDirectoryLoader, SeleniumURLLoader
@@ -27,14 +26,6 @@ import pinecone
 
 # Queue
 log_queue = queue.Queue()
-
-class MyCustomHandler(BaseCallbackHandler):
-    def __init__(self, text_area):
-        self.text_area = text_area
-
-    def on_llm_new_token(self, token: str, **kwargs) -> None:
-        self.text_area.insert(tk.END, token)
-        self.text_area.update_idletasks()
 
 def is_valid_url(url: str) -> bool:
     try:
@@ -128,11 +119,12 @@ def get_vectorstore(
 
 def get_qa(temp: str, model: str, vectorstore: Pinecone, text_area: tk.Text) -> BaseConversationalRetrievalChain:
     retriever = vectorstore.as_retriever()
-    llm = ChatOpenAI(temperature=temp, model=model)
-    memory = ConversationSummaryBufferMemory(llm=llm, max_token_limit=100, memory_key="chat_history",
+    llm_4 = ChatOpenAI(temperature=temp, model=model)
+    llm_3 = ChatOpenAI(temperature=0, model="gpt-3.5-turbo")
+    memory = ConversationSummaryBufferMemory(llm=llm_3, max_token_limit=500, memory_key="chat_history",
                                              return_messages=True, input_key='question', output_key='answer')
-    question_generator = LLMChain(llm=llm, prompt=CONDENSE_QUESTION_PROMPT)
-    doc_chain = load_qa_with_sources_chain(llm, chain_type="refine")
+    question_generator = LLMChain(llm=llm_4, prompt=CONDENSE_QUESTION_PROMPT)
+    doc_chain = load_qa_with_sources_chain(llm_4, chain_type="refine")
     return ConversationalRetrievalChain(retriever=retriever, combine_docs_chain=doc_chain,
                                         question_generator=question_generator, memory=memory)
 
@@ -141,16 +133,8 @@ def fetch_answer(query: str, qa: BaseConversationalRetrievalChain, text_area: Sc
     text_area.delete('1.0', tk.END)
     log_queue.put("Answering ...")
     with get_openai_callback() as cb:
-        result = qa({"question": query}, return_only_outputs=True)
+        result = qa({"question": query})
     text_area.insert(tk.END, f'{result["answer"]}\n')
-    '''
-    sources = set()
-    for source in result['source_documents']:
-        sources.add(source.metadata['source'])
-    text_area.insert(tk.END, '\n\nSources:\n')
-    for source in sources:
-        text_area.insert(tk.END, f'{source}\n')
-    '''
     text_area.insert(tk.END, f'\n\n{cb}')
     log_queue.put("Ready")
 
