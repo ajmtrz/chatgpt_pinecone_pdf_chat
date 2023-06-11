@@ -16,7 +16,7 @@ from langchain.memory import ConversationSummaryBufferMemory
 from langchain.chains import ConversationalRetrievalChain
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain.callbacks import get_openai_callback
-from langchain.chains.conversational_retrieval.prompts import CONDENSE_QUESTION_PROMPT
+from langchain.chains.conversational_retrieval.prompts import CONDENSE_QUESTION_PROMPT, QA_PROMPT
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.document_loaders import PyPDFDirectoryLoader, SeleniumURLLoader
 from langchain.schema import Document
@@ -131,7 +131,7 @@ def get_qa(temp: str, model: str, vectorstore: Pinecone, text_area: tk.Text) -> 
     llm_3 = ChatOpenAI(temperature=0, model='gpt-3.5-turbo')
     memory = ConversationSummaryBufferMemory(llm=llm_3, max_token_limit=100, memory_key="chat_history",
                                              return_messages=True, input_key='question', output_key='answer')
-    return ConversationalRetrievalChain.from_llm(llm=streaming_llm_4, chain_type="refine", retriever=retriever,
+    return ConversationalRetrievalChain.from_llm(llm=streaming_llm_4, chain_type="stuff", retriever=retriever,
                                                  condense_question_llm=llm_3, memory=memory,
                                                  condense_question_prompt=CONDENSE_QUESTION_PROMPT,
                                                  return_source_documents=True)
