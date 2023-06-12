@@ -68,12 +68,15 @@ def clean_documents(documents: List[Document]) -> None:
 
 
 def join_data(pdf_folder: str, urls_file: str) -> List[Document]:
-    # Read and clean documents
+    # Read pdfs
     pdfs, urls = [], []
-    if pdf_folder:
-        pdfs = read_pdfs(pdf_folder)
-    if urls_file:
-        urls = read_urls(urls_file)
+    if os.path.isdir(pdf_folder):
+        if pdf_folder:
+            pdfs = read_pdfs(pdf_folder)
+    # Read URLs
+    if os.path.isfile(urls_file):
+        if urls_file:
+            urls = read_urls(urls_file)
     docs = pdfs + urls
     if not docs:
         print(f'Any document provided')
@@ -131,17 +134,21 @@ def get_qa(temp: str, model: str, vectorstore: Pinecone, text_area: tk.Text) -> 
 
 def fetch_answer(query: str, qa: BaseConversationalRetrievalChain, text_area: ScrolledText) -> None:
     text_area.delete('1.0', tk.END)
+    text_area.update_idletasks()
     log_queue.put("Answering ...")
     with get_openai_callback() as cb:
         result = qa({"question": query})
     text_area.insert(tk.END, f'{result["answer"]}\n')
+    text_area.insert(tk.END, f'\n\n____________________________________________________________')
+    text_area.insert(tk.END, f'\n\n____________________________________________________________')
+    text_area.insert(tk.END, f'\n\n{result["chat_history"]}')
     text_area.insert(tk.END, f'\n\n{cb}')
+    text_area.update_idletasks()
     log_queue.put("Ready")
 
 
 def send_query(qa: BaseConversationalRetrievalChain, text_area: ScrolledText) -> None:
     query = text_area.get('1.0', 'end-1c')
-    text_area.delete('1.0', tk.END)
     threading.Thread(target=fetch_answer, args=(query, qa, text_area)).start()
 
 
