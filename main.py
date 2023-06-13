@@ -54,7 +54,11 @@ def read_urls(path: str) -> List[Document]:
             url = linea.strip()
             if is_valid_url(sanitize_url(url)):
                 urls.append(url)
-    loader = SeleniumURLLoader(urls=urls)
+    try:
+        loader = SeleniumURLLoader(urls=urls)
+    except Exception as e:
+        print(f'{e}')
+        exit(1)
     return loader.load()
 
 
@@ -102,10 +106,10 @@ def get_vectorstore(
     if pinecone_index_name not in pinecone_indexes:
         for index in pinecone_indexes:
             pinecone.delete_index(index)
-        # Create index
-        pinecone.create_index(pinecone_index_name, dimension=1536, metric="cosine", pod_type="p1")
         # Get documents
         documents = join_data(pdf_folder, urls_file)
+        # Create index
+        pinecone.create_index(pinecone_index_name, dimension=1536, metric="cosine", pod_type="p1")
         # Wait to ready
         while True:
             try:
@@ -114,7 +118,7 @@ def get_vectorstore(
                     if index_info[7]['state'] == 'Ready':
                         pinecone_object = Pinecone.from_documents(documents, embeddings, index_name=pinecone_index_name)
                         break
-            except Exception as e:
+            except Exception:
                 log_queue.put("Waiting for index to be ready, please wait ...")
             time.sleep(1)
     else:
