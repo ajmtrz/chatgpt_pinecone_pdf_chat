@@ -43,7 +43,11 @@ def sanitize_url(url: str) -> str:
 
 
 def read_pdfs(path: str) -> List[Document]:
-    loader = PyPDFDirectoryLoader(path)
+    try:
+        loader = PyPDFDirectoryLoader(path)
+    except Exception as e:
+        print(f'{e}')
+        exit(1)
     return loader.load()
 
 
@@ -85,7 +89,7 @@ def join_data(pdf_folder: str, urls_file: str) -> List[Document]:
             urls = read_urls(urls_file)
     docs = pdfs + urls
     if not docs:
-        print(f'Any document provided')
+        print(f'Any pdf or url provided')
         exit(0)
     clean_documents(docs)
     docs_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(chunk_size=100, chunk_overlap=0)
