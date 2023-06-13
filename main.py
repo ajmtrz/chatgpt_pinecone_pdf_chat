@@ -1,4 +1,5 @@
 import os
+import glob
 import re
 import time
 import queue
@@ -71,7 +72,8 @@ def join_data(pdf_folder: str, urls_file: str) -> List[Document]:
     # Read pdfs
     pdfs, urls = [], []
     if os.path.isdir(pdf_folder):
-        if pdf_folder:
+        pdf_files = glob.glob(os.path.join(pdf_folder, '*.pdf'))
+        if pdf_files:
             pdfs = read_pdfs(pdf_folder)
     # Read URLs
     if os.path.isfile(urls_file):
@@ -113,14 +115,14 @@ def get_vectorstore(
                         pinecone_object = Pinecone.from_documents(documents, embeddings, index_name=pinecone_index_name)
                         break
             except Exception as e:
-                print(f'Waiting for index to be ready, current status: {e}')
-            time.sleep(5)
+                log_queue.put("Waiting for index to be ready, please wait ...")
+            time.sleep(1)
     else:
         pinecone_object = Pinecone.from_existing_index(index_name=pinecone_index_name, embedding=embeddings)
     return pinecone_object
 
 
-def get_qa(temp: str, model: str, vectorstore: Pinecone, text_area: tk.Text) -> BaseConversationalRetrievalChain:
+def get_qa(temp: str, model: str, vectorstore: Pinecone) -> BaseConversationalRetrievalChain:
     retriever = vectorstore.as_retriever()
     llm_4 = ChatOpenAI(temperature=temp, model=model)
     llm_3 = ChatOpenAI(temperature=0, model="gpt-3.5-turbo")
@@ -135,16 +137,13 @@ def get_qa(temp: str, model: str, vectorstore: Pinecone, text_area: tk.Text) -> 
 def fetch_answer(query: str, qa: BaseConversationalRetrievalChain, text_area: ScrolledText) -> None:
     text_area.delete('1.0', tk.END)
     text_area.update_idletasks()
-    log_queue.put("Answering ...")
+    log_queue.put("Waiting answer ...")
     with get_openai_callback() as cb:
         result = qa({"question": query})
     text_area.insert(tk.END, f'{result["answer"]}\n')
-    text_area.insert(tk.END, f'\n\n____________________________________________________________')
-    text_area.insert(tk.END, f'\n\n____________________________________________________________')
-    text_area.insert(tk.END, f'\n\n{result["chat_history"]}')
     text_area.insert(tk.END, f'\n\n{cb}')
     text_area.update_idletasks()
-    log_queue.put("Ready")
+    log_queue.put("Ready to query")
 
 
 def send_query(qa: BaseConversationalRetrievalChain, text_area: ScrolledText) -> None:
@@ -172,8 +171,6 @@ def parse_args() -> argparse.Namespace:
 
 def gui(pinecone_api_key: str, pinecone_env: str, pinecone_index_name: str, pdf_folder: str, urls_file: str,
         openai_temp: str, openai_model:  str) -> None:
-    # Initialize OpenAI, Pinecone, and QA
-    vectorstore = get_vectorstore(pinecone_api_key, pinecone_env, pinecone_index_name, pdf_folder, urls_file)
     def update_status_bar():
         try:
             message = log_queue.get_nowait()
@@ -195,10 +192,24 @@ def gui(pinecone_api_key: str, pinecone_env: str, pinecone_index_name: str, pdf_
     text_area = ScrolledText(root, width=40, height=10)
     text_area.grid(row=1, column=0, sticky="nsew")
 
-    qa = get_qa(openai_temp, openai_model, vectorstore, text_area)
-
-    button = tk.Button(root, text='Submit', command=lambda: send_query(qa, text_area))
+    # Start with the button disabled
+    button = tk.Button(root, text='Submit', state='disabled')
     button.grid(row=2, column=0)
+
+    def enable_button():
+        button.config(state='normal')
+
+    def setup_qa():
+        # Initialize OpenAI, Pinecone, and QA
+        log_queue.put("Initializing, please wait ...")
+        vectorstore = get_vectorstore(pinecone_api_key, pinecone_env, pinecone_index_name, pdf_folder, urls_file)
+        qa = get_qa(openai_temp, openai_model, vectorstore)
+        # Enable the button after the operation is done
+        button.config(command=lambda: send_query(qa, text_area))
+        root.after(0, enable_button)
+        log_queue.put("Ready to query")
+
+    threading.Thread(target=setup_qa).start()
 
     root.grid_columnconfigure(0, weight=1)
     root.grid_rowconfigure(1, weight=1)
@@ -216,7 +227,6 @@ def main() -> None:
     os.environ["PYTHONHTTPSVERIFY"] = "0"
 
     # Initialize GUI
-    log_queue.put("Ready to query")
     gui(args.pinecone_api_key, args.pinecone_env, args.pinecone_index_name, args.pdf_folder,
                                   args.urls_file, args.openai_temp, args.openai_model)
 
