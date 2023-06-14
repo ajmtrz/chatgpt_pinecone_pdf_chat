@@ -5,3 +5,6 @@ tk
 openai
 pinecone-client
 selenium
+pypdf
+unstructured
+tiktoken
