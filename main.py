@@ -67,11 +67,17 @@ def read_urls(path: str) -> List[Document]:
 
 
 def clean_documents(documents: List[Document]) -> None:
-    rm_word = "Copyright"
+    rm_word_0 = u'\N{COPYRIGHT SIGN}'
+    rm_word_1 = u'\N{TRADE MARK SIGN}'
+    rm_word_2 = u'\N{REGISTERED SIGN}'
+    rm_word_3 = f'Copyright'
+    rm_word_4 = f'Todos los derechos reservados'
+    rm_word_5 = f'All rights reserved'
+    rm_words = f"{rm_word_0}|{rm_word_1}|{rm_word_2}|{rm_word_3}|{rm_word_4}|{rm_word_5}"
     rm_char = "\t\n"
     rm_table = str.maketrans("", "", rm_char)
     for document in documents:
-        document.page_content = re.sub(fr"\b{rm_word}\b", "", document.page_content, flags=re.IGNORECASE)
+        document.page_content = re.sub(rm_words, "", document.page_content)
         document.page_content = document.page_content.translate(rm_table)
         document.page_content = re.sub(r" {2,}", " ", document.page_content)
 
