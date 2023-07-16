@@ -94,6 +94,10 @@ def join_data(pdf_folder: str, urls_file: str) -> List[Document]:
         if urls_file:
             urls = read_urls(urls_file)
     docs = pdfs + urls
+    list_docs = set()
+    for doc in docs:
+        list_docs.add(doc.metadata['source'])
+    print(f'{len(list_docs)} provided sources')
     if not docs:
         print(f'Any pdf or url provided')
         exit(0)
@@ -126,14 +130,15 @@ def get_vectorstore(
                 index_info = pinecone.describe_index(name=pinecone_index_name)
                 if len(index_info) > 0:
                     if index_info[7]['state'] == 'Ready':
-                        pinecone_object = Pinecone.from_documents(documents, embeddings, index_name=pinecone_index_name)
+                        pinecone_index = Pinecone.from_documents(documents, embeddings, index_name=pinecone_index_name)
+                        print(f'Pinecone index {index_info.name} created ')
                         break
             except Exception:
                 log_queue.put("Waiting for index to be ready, please wait ...")
             time.sleep(1)
     else:
-        pinecone_object = Pinecone.from_existing_index(index_name=pinecone_index_name, embedding=embeddings)
-    return pinecone_object
+        pinecone_index = Pinecone.from_existing_index(index_name=pinecone_index_name, embedding=embeddings)
+    return pinecone_index
 
 
 def get_qa(temp: str, model: str, vectorstore: Pinecone) -> BaseConversationalRetrievalChain:
