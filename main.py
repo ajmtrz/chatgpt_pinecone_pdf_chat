@@ -131,7 +131,7 @@ def get_vectorstore(
                 if len(index_info) > 0:
                     if index_info[7]['state'] == 'Ready':
                         pinecone_index = Pinecone.from_documents(documents, embeddings, index_name=pinecone_index_name)
-                        print(f'Pinecone index {index_info.name} created ')
+                        print(f'Pinecone index {pinecone_index_name} created ')
                         break
             except Exception:
                 log_queue.put("Waiting for index to be ready, please wait ...")
