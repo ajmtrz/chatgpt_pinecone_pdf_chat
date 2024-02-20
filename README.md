@@ -2,7 +2,7 @@
 
 *No pain, all gain! Be the homework hero with this hilarious piece of wizardry...*
 
-Welcome to "ChatGPT Do My Homework", the repository for those who value their sanity. This wonder of a Python script reads your boring homework from PDFs and URLs, embezzles, sorry I meant 'embeds', them with the magic of OpenAI, and then does a secret handshake with Pinecone to create a queryable index of information. In simpler terms, it's the homework-doing, mind-blowing sidekick you always wanted.
+Welcome to "ChatGPT Pinecone PDF and URL Chat", a sophisticated Python script designed for individuals seeking efficient academic support. This advanced tool is adept at extracting information from both PDFs and URLs, leveraging the power of OpenAI to enhance and integrate content seamlessly. Through a secure integration with Pinecone, it establishes a queryable index, providing a robust platform for accessing information.
 
 ## Prerequisites
 
@@ -15,14 +15,14 @@ Our Python script accepts a variety of arguments to get your homework done the w
 
 * `--pdf_folder`: Directory containing PDF files for the script to read.
 * `--urls_file`: Text file containing the URLs the script should examine.
-* `--openai_api_key`: Your personal OpenAI API Key. Guard this with your life.
-* `--openai_model`: The type of OpenAI model to use (Example: `gpt-3.5-turbo`). More models, more fun!
-* `--openai_temp`: Sets the temperature for the OpenAI model. Keep it cool, my friends.
-* `--pinecone_api_key`: Your personal Pinecone API Key. Guard this as you would your Netflix password.
-* `--pinecone_env`: The Pinecone environment (region) to use. Choose your own adventure!
-* `--pinecone_index_name`: Name of your Pinecone Index. Choose something memorable, like your first pet's name!
+* `--openai_api_key`: Your personal OpenAI API Key.
+* `--openai_model`: The type of OpenAI model to use (Example: `gpt-3.5-turbo`).
+* `--openai_temp`: Sets the temperature for the OpenAI model.
+* `--pinecone_api_key`: Your personal Pinecone API Key.
+* `--pinecone_env`: The Pinecone environment (region) to use.
+* `--pinecone_index_name`: Name of your Pinecone Index.
 
-Once your arguments are set, the script gets to work, reading and cleaning documents from the specified sources, initializing OpenAI and Pinecone, and setting up a GUI for you to send queries to your new homework helper. Homework has never been so... entertaining!
+Once your arguments are set, the script gets to work, reading and cleaning documents from the specified sources, initializing OpenAI and Pinecone, and setting up a GUI for you to send queries about the content of the documents.
 
 ## Disclaimer
 

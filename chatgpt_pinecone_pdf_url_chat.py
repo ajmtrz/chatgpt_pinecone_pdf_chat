@@ -201,7 +201,7 @@ def gui(pinecone_api_key: str, pinecone_env: str, pinecone_index_name: str, pdf_
     # Initialize GUI
     root = tk.Tk()
     root.geometry("800x600")
-    root.title("ChatGPTDoMyHomework")
+    root.title("ChatGPT Pinecone PDF and URL Chat")
 
     status_text = tk.StringVar()
     status_bar = tk.Label(root, textvariable=status_text, bd=1, relief=tk.SUNKEN, anchor=tk.W)
